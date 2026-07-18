@@ -1,0 +1,51 @@
+# ── Variables de entorno (contiene tokens) ────────
+.env
+
+# ── Python ────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# ── Node / Backstage ─────────────────────────────
+node_modules/
+04-backstage/app/
+
+# ── Apps generadas por el agente ──────────────────
+apps/deployed/
+
+# ── OS ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+
+# ── IDEs ──────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── AI Assistants ─────────────────────────────────
+.claude/
+.cursor/
+.agent/
+.antigravity/
+.gemini/
+.codex/
+
+# ── Ollama / modelos locales ─────────────────────
+*.gguf
+*.bin
+*.safetensors
+
+# ── Docker ────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Logs ──────────────────────────────────────────
+*.log
+logs/

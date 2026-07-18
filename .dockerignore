@@ -1,0 +1,50 @@
+# ── Git ───────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Variables de entorno ─────────────────────────
+.env
+
+# ── Python ────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ── Node / Backstage ─────────────────────────────
+node_modules/
+04-backstage/app/
+
+# ── OS ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDEs ──────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── AI Assistants ─────────────────────────────────
+.claude/
+.cursor/
+.agent/
+.antigravity/
+.gemini/
+.codex/
+
+# ── Ollama / modelos locales ─────────────────────
+*.gguf
+*.bin
+*.safetensors
+
+# ── Docs y configs no necesarios en imagen ───────
+*.md
+LICENSE
+Makefile
+docker-compose.override.yml
+
+# ── Logs ──────────────────────────────────────────
+*.log
+logs/

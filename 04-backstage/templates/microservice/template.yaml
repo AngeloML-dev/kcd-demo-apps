@@ -1,0 +1,110 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: microservice-template
+  title: Microservicio Kubernetes
+  description: Genera manifest K8s y lo publica en el repo GitOps via PR
+  tags:
+    - kubernetes
+    - microservice
+    - kcd-demo
+spec:
+  owner: platform-team
+  type: service
+  parameters:
+    - title: Configuracion del servicio
+      required:
+        - service_name
+        - environment
+        - github_repo_owner
+        - github_repo_name
+      properties:
+        service_name:
+          title: Nombre del servicio
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          description: Solo minusculas, numeros y guiones
+        description:
+          title: Descripcion
+          type: string
+          default: Microservicio KCD Demo
+        owner:
+          title: Equipo owner
+          type: string
+          default: backend-team
+          enum:
+            - backend-team
+            - platform-team
+            - data-team
+            - frontend-team
+        environment:
+          title: Ambiente
+          type: string
+          default: staging
+          enum:
+            - staging
+            - production
+        replicas:
+          title: Replicas
+          type: integer
+          default: 1
+          minimum: 1
+          maximum: 10
+        port:
+          title: Puerto del contenedor
+          type: integer
+          default: 8080
+        has_health_check:
+          title: Incluir health checks
+          type: boolean
+          default: true
+        github_repo_owner:
+          title: GitHub owner
+          type: string
+          description: Usuario u organizacion de GitHub
+        github_repo_name:
+          title: GitHub repo
+          type: string
+          default: kcd-demo-apps
+          description: Nombre del repo GitOps
+  steps:
+    - id: fetch-manifest
+      name: Generar manifest Kubernetes
+      action: fetch:template
+      input:
+        url: ./skeleton
+        targetPath: ./output
+        values:
+          service_name: ${{ parameters.service_name }}
+          description: ${{ parameters.description }}
+          owner: ${{ parameters.owner }}
+          environment: ${{ parameters.environment }}
+          replicas: ${{ parameters.replicas }}
+          port: ${{ parameters.port }}
+          has_health_check: ${{ parameters.has_health_check }}
+
+    - id: publish-to-github
+      name: Publicar manifest en GitHub (PR)
+      action: publish:github:pull-request
+      input:
+        token: ${{ secrets.githubToken }}
+        repoUrl: github.com?repo=${{ parameters.github_repo_name }}&owner=${{ parameters.github_repo_owner }}
+        branchName: deploy/${{ parameters.service_name }}-${{ parameters.environment }}
+        title: "feat: deploy ${{ parameters.service_name }} to ${{ parameters.environment }}"
+        description: |
+          Deployment generado por Backstage Scaffolder (KCD Demo)
+
+          - **Servicio:** ${{ parameters.service_name }}
+          - **Ambiente:** ${{ parameters.environment }}
+          - **Replicas:** ${{ parameters.replicas }}
+          - **Owner:** ${{ parameters.owner }}
+        sourcePath: ./output/kubernetes
+        targetPath: apps/${{ parameters.environment }}
+        commitMessage: "feat(backstage): deploy ${{ parameters.service_name }} to ${{ parameters.environment }} [${{ parameters.replicas }} replicas]"
+        gitAuthorName: Backstage Scaffolder
+        gitAuthorEmail: backstage@kcd-peru-2026.demo
+
+  output:
+    links:
+      - title: Ver Pull Request
+        url: ${{ steps['publish-to-github'].output.remoteUrl }}

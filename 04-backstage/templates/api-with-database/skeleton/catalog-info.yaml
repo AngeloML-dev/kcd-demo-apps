@@ -1,0 +1,15 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.service_name }}
+  description: API con PostgreSQL - KCD Demo
+  annotations:
+    backstage.io/managed-by-location: file:./catalog-info.yaml
+  tags:
+    - kubernetes
+    - database
+    - kcd-demo
+spec:
+  type: service
+  lifecycle: experimental
+  owner: ${{ values.owner }}

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KCD Peru 2026 — Platform Engineering + AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+  <link rel="stylesheet" href="/static/app.css">
+  <style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-screen overflow-hidden font-sans">
+<div id="app" v-cloak class="flex flex-col h-screen">
+
+  <!-- Particles -->
+  <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden" ref="particlesRef"></div>
+
+  <!-- Header (fixed top) -->
+  <header class="shrink-0 bg-slate-800/85 backdrop-blur-md border-b border-slate-700 px-8 py-4 flex items-center justify-between relative z-10">
+    <div class="flex items-center gap-3">
+      <h1 class="text-lg font-semibold"><span class="text-sky-400">KCD Peru 2026</span> — Platform Engineering + AI</h1>
+      <span v-if="ollamaModel" class="text-xs font-mono px-2.5 py-1 rounded-md bg-violet-500/15 text-violet-400 border border-violet-500/25">{{ ollamaModel }}</span>
+    </div>
+    <div class="flex gap-2">
+      <span v-for="(ok, name) in services" :key="name"
+            :class="['text-xs px-2 py-1 rounded font-medium transition-all duration-400',
+                      ok ? 'badge-ok' : 'badge-off']">{{ name }}</span>
+    </div>
+  </header>
+
+  <!-- Scrollable content area -->
+  <main class="flex-1 overflow-y-auto relative z-10" ref="chatArea">
+    <div class="max-w-[900px] mx-auto px-4 pt-6 pb-4">
+
+      <!-- Welcome (shown when no messages) -->
+      <div v-if="!messages.length && intentMode === 'hidden' && !showFlow" class="flex flex-col items-center justify-center py-20 text-center">
+        <div class="text-4xl mb-4">&#9781;</div>
+        <h2 class="text-xl font-semibold text-slate-200 mb-2">Platform Engineering + AI</h2>
+        <p class="text-slate-400 text-sm max-w-md mb-6">Describe lo que necesitas desplegar en lenguaje natural y el agente se encargara del resto.</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          <button v-for="ex in examples" :key="ex" @click="prompt = ex"
+                  class="bg-slate-800 border border-slate-700 rounded-lg text-slate-300 px-4 py-2.5 cursor-pointer text-sm font-sans transition-all hover:border-sky-400 hover:text-sky-400 hover:bg-sky-400/5 hover:-translate-y-px">
+            {{ ex }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat history -->
+      <div v-if="messages.length" class="flex flex-col gap-3 mb-4">
+        <div v-for="(msg, i) in messages" :key="i"
+             :class="['rounded-xl px-5 py-4 max-w-[85%] animate-slide-in',
+                       msg.type === 'user'
+                         ? 'bg-sky-400/8 border border-sky-400/20 self-end'
+                         : 'bg-slate-800 border border-slate-700 self-start']">
+          <div :class="['text-[0.7rem] font-semibold mb-1.5 uppercase tracking-wide',
+                         msg.type === 'user' ? 'text-slate-400' : 'text-sky-400']">
+            {{ msg.type === 'user' ? 'Tu' : 'Agente' }}
+          </div>
+          <div v-if="msg.type === 'user'" class="text-sm leading-relaxed text-slate-100 whitespace-pre-wrap">{{ msg.text }}</div>
+          <div v-else class="text-sm leading-relaxed text-slate-100 whitespace-pre-wrap msg-rendered" v-html="renderMarkdown(msg.text)"></div>
+        </div>
+      </div>
+
+      <!-- Flow diagram -->
+      <div v-if="showFlow"
+           class="flex items-center justify-center gap-1 mb-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700 animate-slide-in">
+        <template v-for="(node, i) in flowNodes" :key="node.id">
+          <span :class="['text-xs font-semibold px-2.5 py-1 rounded-md whitespace-nowrap transition-all duration-400',
+                          flowStates[node.id] === 'active' ? 'flow-active' :
+                          flowStates[node.id] === 'completed' ? 'flow-completed' :
+                          flowStates[node.id] === 'warning' ? 'flow-warning' :
+                          flowStates[node.id] === 'skipped' ? 'flow-skipped' :
+                          'bg-slate-700 text-slate-400']">
+            {{ node.label }}
+          </span>
+          <span v-if="i < flowNodes.length - 1"
+                :class="['text-sm transition-colors duration-400',
+                          flowArrowLit(i) ? 'text-sky-400' : 'text-slate-700']">&#9654;</span>
+        </template>
+      </div>
+
+      <!-- Missing fields -->
+      <div v-if="intentMode === 'missing'"
+           class="bg-slate-800 border border-slate-700 rounded-xl p-5 mb-4 animate-slide-in">
+        <h3 class="text-sm text-slate-400 mb-3">Se necesitan datos adicionales para continuar</h3>
+        <div v-for="f in missingFields" :key="f.field" class="mb-3">
+          <label class="text-sm text-slate-400 block mb-1">{{ f.prompt }}</label>
+          <input v-model="missingValues[f.field]" @keypress.enter="submitMissing"
+                 :class="['w-full bg-slate-900 border rounded-lg px-3 py-2.5 text-slate-100 font-sans text-sm outline-none transition-colors',
+                           missingErrors[f.field] ? 'border-red-400' : 'border-slate-700 focus:border-sky-400']" />
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button @click="submitMissing"
+                  class="border border-sky-400 text-sky-400 rounded-md px-5 py-2 text-sm font-semibold cursor-pointer transition-all hover:-translate-y-px">
+            Continuar
+          </button>
+          <button @click="cancelDeploy"
+                  class="border border-slate-700 text-slate-400 rounded-md px-5 py-2 text-sm cursor-pointer transition-all hover:-translate-y-px">
+            Cancelar
+          </button>
+        </div>
+      </div>
+
+      <!-- Intent card: Confirm mode -->
+      <div v-if="intentMode === 'confirm'"
+           class="bg-slate-800 border border-slate-700 rounded-xl p-5 mb-4 animate-slide-in">
+        <h3 class="text-sm text-slate-400 mb-3">{{ intentTitle }}</h3>
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2">
+          <div v-for="(f, i) in intentFields" :key="f.label" class="text-sm">
+            <div class="text-xs text-slate-400">{{ f.label }}</div>
+            <div class="font-semibold text-sky-400 animate-fade-up" :style="{ animationDelay: (i * 0.08) + 's' }">{{ f.value }}</div>
+          </div>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button @click="confirmDeploy"
+                  class="border border-green-400 text-green-400 rounded-md px-5 py-2 text-sm font-semibold cursor-pointer transition-all hover:-translate-y-px">
+            Confirmar deployment
+          </button>
+          <button @click="intentMode = 'edit'"
+                  class="border border-amber-400 text-amber-400 rounded-md px-5 py-2 text-sm cursor-pointer transition-all hover:-translate-y-px">
+            Modificar
+          </button>
+          <button @click="cancelDeploy"
+                  class="border border-slate-700 text-slate-400 rounded-md px-5 py-2 text-sm cursor-pointer transition-all hover:-translate-y-px">
+            Cancelar
+          </button>
+        </div>
+      </div>
+
+      <!-- Intent card: Edit mode -->
+      <div v-if="intentMode === 'edit'"
+           class="bg-slate-800 border border-slate-700 rounded-xl p-5 mb-4 animate-slide-in">
+        <h3 class="text-sm text-slate-400 mb-3">Modificar parametros</h3>
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Servicio</label>
+            <input v-model="editForm.service_name"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-100 text-sm outline-none focus:border-sky-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Ambiente</label>
+            <select v-model="editForm.environment"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-100 text-sm">
+              <option value="staging">staging</option>
+              <option value="production">production</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Replicas</label>
+            <input v-model.number="editForm.replicas" type="number" min="1" max="10"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-100 text-sm outline-none focus:border-sky-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Puerto</label>
+            <input v-model.number="editForm.port" type="number"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-100 text-sm outline-none focus:border-sky-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Owner</label>
+            <select v-model="editForm.owner"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-100 text-sm">
+              <option v-for="o in ownerOptions" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button @click="applyEdits"
+                  class="border border-sky-400 text-sky-400 rounded-md px-5 py-2 text-sm font-semibold cursor-pointer transition-all hover:-translate-y-px">
+            Aplicar cambios
+          </button>
+          <button @click="intentMode = 'confirm'"
+                  class="border border-slate-700 text-slate-400 rounded-md px-5 py-2 text-sm cursor-pointer transition-all hover:-translate-y-px">
+            Volver
+          </button>
+        </div>
+      </div>
+
+      <!-- Pipeline steps -->
+      <div v-for="step in visibleSteps" :key="step.id"
+           class="bg-slate-800 border border-slate-700 rounded-xl px-5 py-4 mb-3 relative z-1 animate-slide-in">
+        <div class="flex items-center gap-3 text-sm">
+          <div :class="['w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-all duration-400',
+                         step.status === 'running' ? 'icon-running' :
+                         step.status === 'done' ? 'icon-done' :
+                         step.status === 'warn' ? 'icon-warn' :
+                         'bg-slate-700 text-slate-400']">
+            <template v-if="step.status === 'done'">&#10003;</template>
+            <template v-else-if="step.status === 'warn'">!</template>
+            <template v-else-if="step.status === 'skip'">-</template>
+            <template v-else>{{ step.num }}</template>
+          </div>
+          <span class="font-medium">
+            {{ step.msg }}
+            <span v-if="step.status === 'running'" class="typing-dots">
+              <span></span><span></span><span></span>
+            </span>
+          </span>
+        </div>
+        <div v-if="step.prUrl" class="text-xs text-slate-400 mt-1 ml-11">
+          <a :href="step.prUrl" target="_blank" class="text-sky-400 no-underline hover:underline">{{ step.prUrl }}</a>
+        </div>
+        <div v-if="step.detail && !step.prUrl" class="text-xs text-slate-400 mt-1 ml-11">{{ step.detail }}</div>
+        <div v-if="step.status === 'running'" class="ml-11 mt-2 h-[3px] bg-slate-700 rounded-sm overflow-hidden">
+          <div class="progress-bar"></div>
+        </div>
+        <!-- Pods table -->
+        <div v-if="step.pods.length" class="ml-11 mt-3 text-xs w-[calc(100%-2.75rem)]">
+          <table class="w-full border-collapse">
+            <tr>
+              <th class="text-left text-slate-400 font-medium px-3 py-1.5 border-b border-slate-700">Pod</th>
+              <th class="text-left text-slate-400 font-medium px-3 py-1.5 border-b border-slate-700">Ready</th>
+              <th class="text-left text-slate-400 font-medium px-3 py-1.5 border-b border-slate-700">Status</th>
+              <th class="text-left text-slate-400 font-medium px-3 py-1.5 border-b border-slate-700">Age</th>
+            </tr>
+            <tr v-for="p in step.pods" :key="p.name" class="animate-fade-up">
+              <td class="px-3 py-1.5 border-b border-slate-700">{{ p.name }}</td>
+              <td class="px-3 py-1.5 border-b border-slate-700">{{ p.ready }}</td>
+              <td :class="['px-3 py-1.5 border-b border-slate-700',
+                            p.status === 'Running' ? 'text-green-400 font-semibold' : 'text-amber-400']">{{ p.status }}</td>
+              <td class="px-3 py-1.5 border-b border-slate-700">{{ p.age }}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Done banner -->
+      <div v-if="doneResult" ref="doneRef"
+           class="done-gradient border rounded-xl p-6 mt-4 text-center relative overflow-hidden animate-slide-in">
+        <h2 class="text-green-400 text-xl font-semibold mb-2">Deploy exitoso: {{ doneResult.service }} en {{ doneResult.env }}</h2>
+        <p class="text-slate-400 text-sm">
+          {{ doneResult.replicas }} replicas | {{ doneResult.elapsed }}s total
+          <template v-if="doneResult.pr_url"> | PR: {{ doneResult.pr_url }}</template>
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Input bar (fixed bottom) -->
+  <footer class="shrink-0 border-t border-slate-700 bg-slate-800/90 backdrop-blur-md px-4 py-4 relative z-10">
+    <div class="max-w-[900px] mx-auto">
+      <div class="flex gap-3 items-center bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 transition-colors focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/10">
+        <input v-model="prompt" @keypress.enter="deploy" :disabled="isDeploying" ref="promptInput"
+               placeholder="Describe que quieres desplegar..."
+               class="flex-1 bg-transparent border-none text-slate-100 font-sans text-base outline-none py-2 placeholder-slate-500 disabled:opacity-50" />
+        <button @click="deploy" :disabled="isDeploying || !prompt.trim()"
+                class="bg-gradient-to-br from-sky-400 to-indigo-400 text-slate-900 rounded-lg px-5 py-2.5 font-semibold cursor-pointer text-sm whitespace-nowrap transition-all hover:-translate-y-px hover:shadow-lg hover:shadow-sky-400/30 active:translate-y-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none">
+          Desplegar
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Timer -->
+  <div v-if="timerVisible"
+       class="fixed bottom-20 right-6 font-mono text-xs text-slate-400 bg-slate-800/90 backdrop-blur-sm px-3 py-1.5 rounded-md border border-slate-700 z-50">
+    {{ timerDisplay }}
+  </div>
+
+</div>
+
+<script type="importmap">
+  { "imports": { "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js" } }
+</script>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

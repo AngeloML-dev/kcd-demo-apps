@@ -1,0 +1,75 @@
+# Generado por Backstage Software Template
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ values.service_name }}
+  namespace: ${{ values.environment }}
+  labels:
+    app: ${{ values.service_name }}
+    managed-by: backstage-scaffolder
+    environment: ${{ values.environment }}
+    owner: ${{ values.owner }}
+spec:
+  replicas: ${{ values.replicas }}
+  selector:
+    matchLabels:
+      app: ${{ values.service_name }}
+  template:
+    metadata:
+      labels:
+        app: ${{ values.service_name }}
+        environment: ${{ values.environment }}
+    spec:
+      containers:
+        - name: ${{ values.service_name }}
+          image: nginx:alpine
+          ports:
+            - containerPort: ${{ values.port }}
+              name: http
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${{ values.service_name }}
+  namespace: ${{ values.environment }}
+  labels:
+    app: ${{ values.service_name }}
+    managed-by: backstage-scaffolder
+spec:
+  selector:
+    app: ${{ values.service_name }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: ${{ values.port }}
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ${{ values.service_name }}
+  namespace: ${{ values.environment }}
+  labels:
+    app: ${{ values.service_name }}
+    managed-by: backstage-scaffolder
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ${{ values.service_name }}
+  minReplicas: ${{ values.replicas }}
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

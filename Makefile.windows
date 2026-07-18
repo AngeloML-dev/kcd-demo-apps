@@ -1,0 +1,76 @@
+# =======================================================
+# KCD Peru 2026 — Windows 11 + WSL2 (16 GB) 
+# Perfil: Llama 3.2 + kind de un nodo + ArgoCD + Backstage requerido.
+# MCP se omite porque requiere un modelo grande para function calling.
+# =======================================================
+
+.PHONY: help preflight setup backstage-install backstage check demo web status argocd-setup argocd clean-apps clean-all
+
+help: ## Mostrar comandos para Windows/WSL2
+	@echo ""
+	@echo "  KCD Peru 2026 — Windows 11 + WSL2 (16 GB)"
+	@echo "  Ejecutar siempre desde WSL2; no usar PowerShell ni Git Bash."
+	@echo ""
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / \
+		{printf "    \\033[36m%-18s\\033[0m %s\\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo ""
+	@echo "  Perfil: llama3.2, kind de un nodo y Backstage requerido."
+
+preflight: ## Verificar WSL2, Docker Desktop y memoria disponible
+	@if grep -qi microsoft /proc/version 2>/dev/null; then \
+		echo "  OK  WSL2 detectado"; \
+	elif [ "$$(uname -s)" = "Linux" ]; then \
+		echo "  OK  Linux nativo detectado"; \
+	else \
+		echo "  FALTA  Ejecuta este perfil dentro de WSL2 o Linux"; \
+	fi
+	@docker info >/dev/null 2>&1 && \
+		echo "  OK  Docker Desktop disponible desde WSL2" || \
+		echo "  FALTA  Inicia Docker Desktop y habilita la integracion WSL2"
+	@awk '/MemTotal/ { printf "  INFO Memoria visible en WSL2: %.1f GB\\n", $$2 / 1024 / 1024 }' /proc/meminfo 2>/dev/null || true
+	@echo "  INFO  Asigna 6-8 GB a Docker Desktop."
+
+setup: preflight ## Preparar workshop (modelo, venv, kind, ArgoCD y Backstage)
+	@[ -f .env ] || cp .env.windows-16gb.example .env
+	@ENV_TMP=.env.windows-16gb.tmp; \
+	awk '/^OLLAMA_MODEL=/ { print "OLLAMA_MODEL=llama3.2"; found=1; next } { print } END { if (!found) print "OLLAMA_MODEL=llama3.2" }' .env > $$ENV_TMP && mv $$ENV_TMP .env
+	@$(MAKE) -C 00-prerequisites check
+	@$(MAKE) -C 00-prerequisites venv
+	@$(MAKE) -C 01-ollama OLLAMA_MODEL=llama3.2 setup
+	@$(MAKE) -C 02-cluster create-lite
+	@$(MAKE) -C 03-argocd install
+	@$(MAKE) -C 04-backstage install
+	@echo "  OK  Workshop Windows listo con Backstage."
+
+backstage-install: ## Instalar Backstage localmente (requiere memoria adicional)
+	@$(MAKE) -C 04-backstage install
+
+backstage: ## Iniciar Backstage en http://localhost:3000
+	@$(MAKE) -C 04-backstage start
+
+check: ## Verificar cluster, ArgoCD y Ollama
+	@$(MAKE) -C 07-demo check
+
+demo: ## Iniciar agente CLI con el perfil liviano
+	@$(MAKE) -C 05-agent run
+
+web: ## Iniciar portal web en http://localhost:8888
+	@$(MAKE) -C 06-web run
+
+status: ## Ver estado de nodos y pods
+	@kubectl get nodes -o wide 2>/dev/null || echo "  (cluster no disponible)"
+	@kubectl get pods -n staging -o wide 2>/dev/null || echo "  (staging vacio)"
+	@kubectl get pods -n production -o wide 2>/dev/null || echo "  (production vacio)"
+
+argocd-setup: ## Configurar GitHub y Applications de ArgoCD (opcional)
+	@$(MAKE) -C 03-argocd configure
+
+argocd: ## Abrir ArgoCD UI en https://localhost:8080
+	@$(MAKE) -C 03-argocd ui
+
+clean-apps: ## Borrar deployments generados y mantener el cluster
+	@$(MAKE) -C 07-demo clean-apps
+
+clean-all: ## Eliminar cluster kind y la instalacion local de Backstage
+	@$(MAKE) -C 07-demo clean-all
+	@rm -rf 04-backstage/app

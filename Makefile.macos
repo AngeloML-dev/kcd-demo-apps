@@ -1,0 +1,3 @@
+# Entrada macOS — demo completo (Apple Silicon recomendado).
+# Se mantiene Makefile como alias por compatibilidad con los comandos existentes.
+include Makefile
